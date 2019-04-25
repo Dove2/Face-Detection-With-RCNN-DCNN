@@ -26,7 +26,9 @@ def build_F1_model():
     x = layers.Flatten()(x)
     x = layers.Dense(120, activation='relu', name='block1_dense1')(x)
     x = layers.Dense(10, name='block1_dense2')(x)
+    return models.Model(overall_input_tensor, x)
 
+def build_EN1_model():
     top_input_tensor = Input(shape=(topbot_height, topbot_width, channels_num))
     y = layers.Conv2D(20, (4, 4), activation='relu', name='block2_conv1')(top_input_tensor)
     y = layers.MaxPooling2D((2,2), name='block2_pooling1')(y)
@@ -38,64 +40,21 @@ def build_F1_model():
     y = layers.Flatten()(y)
     y = layers.Dense(120, activation='relu', name='block2_dense1')(y)
     y = layers.Dense(6, name='block2_dense2')(y)
+    return models.Model(top_input_tensor, y)
 
-    # bot_input_tensor = Input(shape=(31, 39, 3))
-    # z = layers.Conv2D(20, (4, 4), activation='relu', name='block3_conv1')(bot_input_tensor)
-    # z = layers.MaxPooling2D((2,2), name='block3_pooling1')(z)
-    # z = layers.Conv2D(40, (3, 3), activation='relu', name='block3_conv2')(z)
-    # z = layers.MaxPooling2D((2, 2), name='block3_pooling2')(z)
-    # z = layers.Conv2D(60, (3, 3), name='block3_conv3')(z)
-    # z = layers.MaxPooling2D((2, 2), name='block3_pooling3')(z)
-    # z = layers.Conv2D(80, (2, 2), name='block3_conv4')(z)
-    # z = layers.Flatten()(z)
-    # z = layers.Dense(120, activation='relu', name='block3_dense1')(z)
-    # z = layers.Dense(6, activation='relu', name='block3_dense2')(z)
-
-    # output_tensor = 
-    # return models.Model([overall_input_tensor, top_input_tensor, bot_input_tensor], [x, y, z])
-    return models.Model(overall_input_tensor, x)
-
-model = build_F1_model()
-print(model.summary())
-
-# 训练
-
-
-## 数据预处理
-import os
-
-base_dir = 'E:/Developer/keras/Face Detection/CelebA/Img'
-
-train_dir = os.path.join(base_dir, 'img_align_celeba')
-validation_dir = os.path.join(base_dir, 'validation')
-test_dir = os.path.join(base_dir, 'test')
-predict_dir = os.path.join(base_dir, 'prediction')
-
-import numpy as np
-from keras.preprocessing.image import load_img, img_to_array, array_to_img
-
-# 把训练图片分别加载成预定大小的numpy数组
-
-# 读顺序为：矩阵有多pic_num个，即pic_num张图片，每张图片height行，每行width个像素，每个像素channels_num个值
-imgs_data_overall = np.zeros((pic_num, overall_height, overall_width, channels_num), dtype=int)
-imgs_data_topbot = np.zeros((pic_num, topbot_height, topbot_width, channels_num), dtype=int)
-
-for i, filename in enumerate(os.listdir(train_dir)):
-    #由于os.listdir并不是按着名字顺序排序的，所以需要将名称映射出索引志
-    index = int(filename[:-4]) - 1
-    # print(i, filename, index)
-
-    if index >= pic_num:
-        continue
-
-    img1 = load_img(os.path.join(train_dir, filename), color_mode="grayscale", target_size=(overall_height, overall_width))
-    img2 = load_img(os.path.join(train_dir, filename), color_mode="grayscale", target_size=(topbot_height, topbot_width))
-    imgs_data_overall[index] = img_to_array(img1)
-    imgs_data_topbot[index] = img_to_array(img2)
-    img1.close()
-    img2.close()
-
-import matplotlib.pyplot as plt
+def build_NM1_model():
+    bot_input_tensor = Input(shape=(31, 39, 3))
+    z = layers.Conv2D(20, (4, 4), activation='relu', name='block3_conv1')(bot_input_tensor)
+    z = layers.MaxPooling2D((2,2), name='block3_pooling1')(z)
+    z = layers.Conv2D(40, (3, 3), activation='relu', name='block3_conv2')(z)
+    z = layers.MaxPooling2D((2, 2), name='block3_pooling2')(z)
+    z = layers.Conv2D(60, (3, 3), name='block3_conv3')(z)
+    z = layers.MaxPooling2D((2, 2), name='block3_pooling3')(z)
+    z = layers.Conv2D(80, (2, 2), name='block3_conv4')(z)
+    z = layers.Flatten()(z)
+    z = layers.Dense(120, activation='relu', name='block3_dense1')(z)
+    z = layers.Dense(6, activation='relu', name='block3_dense2')(z)
+    return models.Model(bot_input_tensor, z)
 
 # 测试图片读取是否成功
 def show_raw_image_with_points(i, imgs_data, pos_data, normalize):
@@ -203,11 +162,6 @@ def loadPosData(fpath):
     
     return (num, pos_data)
 
-pos_num, pos_data = loadPosData('E:/Developer/keras/Face Detection/CelebA/Anno/list_landmarks_align_celeba.txt')
-
-for i in np.random.randint(0, 5000, 5):
-    show_raw_image_with_points(i, imgs_data_overall, pos_data, True)
-
 def face_pos_generator(imgs_data, pos_data, style, min_index, max_index, shuffle=False, batch_size=20):
     if max_index is None:
         max_index = len(imgs_data) - 1
@@ -239,7 +193,7 @@ def face_pos_generator(imgs_data, pos_data, style, min_index, max_index, shuffle
                                                                     (overall_width, overall_height), 
                                                                     int(value),
                                                                     'y'))                                                                    
-                # print(targets[j])
+
         elif style == 'top':
             samples = np.zeros((len(rows), topbot_height, topbot_width, channels_num)) 
             targets = np.zeros((len(rows), 6))
@@ -284,78 +238,24 @@ def face_pos_generator(imgs_data, pos_data, style, min_index, max_index, shuffle
         
         yield samples, targets
 
+def show_train_result(history):
+    loss = history.history['loss']
+    val_loss = history.history['val_loss']
 
-batch_size = 20
+    epochs = range(len(loss))
 
-train_gen = face_pos_generator(imgs_data_overall,
-                               pos_data,
-                               'overall',
-                               min_index=0,
-                               max_index=train_pic_num,
-                            #    shuffle=True,
-                               batch_size=batch_size)
-val_gen = face_pos_generator(imgs_data_overall,
-                             pos_data,
-                             'overall',
-                             min_index=train_pic_num+1,
-                             max_index=train_pic_num+val_pic_num,
-                             batch_size=batch_size)
-test_gen = face_pos_generator(imgs_data_overall,
-                              pos_data,
-                              'overall',
-                              min_index=train_pic_num+val_pic_num+1,
-                              max_index=None,
-                              batch_size=batch_size)
+    plt.figure()
 
-# This is how many steps to draw from `val_gen`
-# in order to see the whole validation set:
-val_steps = (val_pic_num) // batch_size
+    plt.plot(epochs, loss, 'bo', label='Training loss')
+    plt.plot(epochs, val_loss, 'b', label='Validation loss')
+    plt.title('Training and validation loss')
+    plt.legend()
 
-# This is how many steps to draw from `test_gen`
-# in order to see the whole test set:
-test_steps = (test_pic_num) // batch_size
+    plt.show()
 
-from keras.optimizers import RMSprop, SGD
-from keras import callbacks
+    print('training results:')
+    plt.figure() 
 
-callbacks_list = [
-    callbacks.EarlyStopping(patience=5, monitor='val_loss'),
-    callbacks.ModelCheckpoint('E:/Developer/keras/Face Detection/model/cascadedCNNsForLocatingModel.h5', 
-                              save_best_only=True, save_weights_only=False, mode='auto', period=1),
-    callbacks.LearningRateScheduler(lambda epoch: float(np.linspace(0.03, 0.01, 500)[epoch]))
-]
-
-model.compile(optimizer=SGD(lr=0.03, momentum=0.9, nesterov=True), loss='mse')
-
-history = model.fit_generator(train_gen,
-                              steps_per_epoch=train_pic_num // batch_size,
-                              epochs=500, 
-                              callbacks=callbacks_list,
-                              validation_data=val_gen,
-                              validation_steps=val_steps)
-
-# print("evaluate train: ", model.evaluate_generator(train_gen, 3000))
-# print("evaluate test: ", model.evaluate_generator(test_gen, 500))
-
-
-loss = history.history['loss']
-val_loss = history.history['val_loss']
-
-epochs = range(len(loss))
-
-plt.figure()
-
-plt.plot(epochs, loss, 'bo', label='Training loss')
-plt.plot(epochs, val_loss, 'b', label='Validation loss')
-plt.title('Training and validation loss')
-plt.legend()
-
-plt.show()
-
-
-#draw train results
-print('training results:')
-plt.figure() 
 
 def show_predict_result_with_real_points(i):
     t = imgs_data_overall[i] / 255.0
@@ -379,7 +279,105 @@ def show_predict_result_with_real_points(i):
     plt.show()
 
 
+
+################################# 数据预处理 #######################################
+import os
+import numpy as np
+from keras.preprocessing.image import load_img, img_to_array, array_to_img
+
+base_dir = 'E:/Developer/keras/Face Detection/CelebA/Img'
+
+train_dir = os.path.join(base_dir, 'img_align_celeba')
+validation_dir = os.path.join(base_dir, 'validation')
+test_dir = os.path.join(base_dir, 'test')
+predict_dir = os.path.join(base_dir, 'prediction')
+
+# 把训练图片分别加载成预定大小的numpy数组
+
+# 读顺序为：矩阵有多pic_num个，即pic_num张图片，每张图片height行，每行width个像素，每个像素channels_num个值
+imgs_data_overall = np.zeros((pic_num, overall_height, overall_width, channels_num), dtype=int)
+imgs_data_topbot = np.zeros((pic_num, topbot_height, topbot_width, channels_num), dtype=int)
+
+for i, filename in enumerate(os.listdir(train_dir)):
+    #由于os.listdir并不是按着名字顺序排序的，所以需要将名称映射出索引志
+    index = int(filename[:-4]) - 1
+    # print(i, filename, index)
+    if index >= pic_num:
+        continue
+    img1 = load_img(os.path.join(train_dir, filename), color_mode="grayscale", target_size=(overall_height, overall_width))
+    # img2 = load_img(os.path.join(train_dir, filename), color_mode="grayscale", target_size=(topbot_height, topbot_width))
+    imgs_data_overall[index] = img_to_array(img1)
+    # imgs_data_topbot[index] = img_to_array(img2)
+    img1.close()
+    # img2.close()
+
+pos_num, pos_data = loadPosData('E:/Developer/keras/Face Detection/CelebA/Anno/list_landmarks_align_celeba.txt')
+
+for i in np.random.randint(0, 5000, 5):
+    show_raw_image_with_points(i, imgs_data_overall, pos_data, True)
+
+import matplotlib.pyplot as plt
+batch_size = 20
+
+train_gen = face_pos_generator(imgs_data_overall,
+                               pos_data,
+                               'overall',
+                               min_index=0,
+                               max_index=train_pic_num,
+                            #    shuffle=True,
+                               batch_size=batch_size)
+val_gen = face_pos_generator(imgs_data_overall,
+                             pos_data,
+                             'overall',
+                             min_index=train_pic_num+1,
+                             max_index=train_pic_num+val_pic_num,
+                             batch_size=batch_size)
+test_gen = face_pos_generator(imgs_data_overall,
+                              pos_data,
+                              'overall',
+                              min_index=train_pic_num+val_pic_num+1,
+                              max_index=None,
+                              batch_size=batch_size)
+
+
+val_steps = (val_pic_num) // batch_size
+test_steps = (test_pic_num) // batch_size
+
+from keras.optimizers import RMSprop, SGD
+from keras import callbacks
+
+
+################# 训练F1模型#########################
+model = build_F1_model()
+print(model.summary())
+
+
+callbacks_list = [
+    callbacks.EarlyStopping(patience=5, monitor='val_loss'),
+    callbacks.ModelCheckpoint('model/F1_Model.h5', 
+                              save_best_only=True, save_weights_only=False, mode='auto', period=1),
+    callbacks.LearningRateScheduler(lambda epoch: float(np.linspace(0.03, 0.01, 500)[epoch]))
+]
+
+model.compile(optimizer=SGD(lr=0.03, momentum=0.9, nesterov=True), loss='mse')
+
+history = model.fit_generator(train_gen,
+                              steps_per_epoch=train_pic_num // batch_size,
+                              epochs=500, 
+                              callbacks=callbacks_list,
+                              validation_data=val_gen,
+                              validation_steps=val_steps)
+
+# print("evaluate train: ", model.evaluate_generator(train_gen, 3000))
+# print("evaluate test: ", model.evaluate_generator(test_gen, 500))
+
+show_train_result(history)
+
 show_predict_result_with_real_points(1)
 
 for i in np.random.randint(4500, 5000, 4):
     show_predict_result_with_real_points(i)
+
+
+##########################训练EN1模型
+en1_model = build_EN1_model()
