@@ -14,7 +14,7 @@ topbot_width = 31
 topbot_height = 39
 channels_num = 1
 
-def build_model():
+def build_F1_model():
     overall_input_tensor = Input(shape=(overall_height, overall_width, channels_num))
     x = layers.Conv2D(20, (4, 4), activation='relu', name='block1_conv1')(overall_input_tensor)
     x = layers.MaxPooling2D((2, 2), name='block1_pooling1')(x)
@@ -55,7 +55,7 @@ def build_model():
     # return models.Model([overall_input_tensor, top_input_tensor, bot_input_tensor], [x, y, z])
     return models.Model(overall_input_tensor, x)
 
-model = build_model()
+model = build_F1_model()
 print(model.summary())
 
 # 训练
