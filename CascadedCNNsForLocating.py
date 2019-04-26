@@ -10,8 +10,8 @@ img_original_height = 218
 
 overall_width = 39
 overall_height = 39
-topbot_width = 31
-topbot_height = 39
+topbot_width = 39
+topbot_height = 31
 channels_num = 1
 
 def build_F1_model():
@@ -57,6 +57,7 @@ def build_NM1_model():
     return models.Model(bot_input_tensor, z)
 
 # 测试图片读取是否成功
+import matplotlib.pyplot as plt
 def show_raw_image_with_points(i, imgs_data, pos_data, normalize):
     print("显示图片为第{}张图片".format(i+1))
     plt.figure()
@@ -181,38 +182,37 @@ def face_pos_generator(imgs_data, pos_data, style, min_index, max_index, shuffle
             for j, row in enumerate(rows):
                 samples[j] = imgs_data[row] / 255.
                 for k, value in enumerate(pos_data[row]):
-                    if k % 2 == 0: # 对x坐标进行变换及归一化
-                        targets[j, k] = normalization(overall_width,
-                                                      transform_pos((img_original_width, img_original_height),
-                                                                    (overall_width, overall_height), 
-                                                                    int(value), 
-                                                                    'x'))
-                    else:
-                        targets[j, k] = normalization(overall_height, 
-                                                      transform_pos((img_original_width, img_original_height), 
-                                                                    (overall_width, overall_height), 
-                                                                    int(value),
-                                                                    'y'))                                                                    
+                    # if k % 2 == 0: # 对x坐标进行变换及归一化
+                    targets[j, k] = normalization(overall_width,
+                                                    transform_pos((img_original_width, img_original_height),
+                                                                (overall_width, overall_height), 
+                                                                int(value), 
+                                                                'x' if k%2==0 else 'y'))
+                    # else:
+                    #     targets[j, k] = normalization(overall_height, 
+                    #                                   transform_pos((img_original_width, img_original_height), 
+                    #                                                 (overall_width, overall_height), 
+                    #                                                 int(value),
+                    #                                                 'y'))                                                                    
 
         elif style == 'top':
             samples = np.zeros((len(rows), topbot_height, topbot_width, channels_num)) 
             targets = np.zeros((len(rows), 6))
             for j, row in enumerate(rows):
                 samples[j] = imgs_data[rows[j]] / 255.
-                # targets[j] = pos_data[rows[j]][:6]
                 for k, value in enumerate(pos_data[rows[j], :6]):
-                    if k % 2 == 0: # x坐标
-                        targets[j, k] = normalization(overall_width,
-                                                      transform_pos((img_original_width, img_original_height),
-                                                                    (overall_width, overall_height), 
-                                                                    int(value), 
-                                                                    'x'))
-                    else:
-                        targets[j, k] = normalization(overall_height, 
-                                                      transform_pos((img_original_width, img_original_height), 
-                                                                    (overall_width, overall_height), 
-                                                                    int(value),
-                                                                    'y'))
+                    # if k % 2 == 0: # x坐标
+                    targets[j, k] = normalization(overall_width,
+                                                    transform_pos((img_original_width, img_original_height),
+                                                                (overall_width, overall_height), 
+                                                                int(value), 
+                                                                'x' if k%2==0 else 'y'))
+                    # else:
+                    #     targets[j, k] = normalization(overall_height, 
+                    #                                   transform_pos((img_original_width, img_original_height), 
+                    #                                                 (overall_width, overall_height), 
+                    #                                                 int(value),
+                    #                                                 'y'))
         
         elif style == 'bot':
             samples = np.zeros((len(rows), topbot_height, topbot_width, channels_num)) 
@@ -221,18 +221,18 @@ def face_pos_generator(imgs_data, pos_data, style, min_index, max_index, shuffle
                 samples[j] = imgs_data[rows[j]] / 255.
                 # targets[j] = pos_data[rows[j]][4:]
                 for k, value in enumerate(pos_data[rows[j], 4:]):
-                    if k % 2 == 0: # x坐标
-                        targets[j, k] = normalization(overall_width,
-                                                      transform_pos((img_original_width, img_original_height),
-                                                                    (overall_width, overall_height), 
-                                                                    int(value), 
-                                                                    'x'))
-                    else:
-                        targets[j, k] = normalization(overall_height, 
-                                                      transform_pos((img_original_width, img_original_height), 
-                                                                    (overall_width, overall_height), 
-                                                                    int(value),
-                                                                    'y'))
+                    # if k % 2 == 0: # x坐标
+                    targets[j, k] = normalization(overall_width,
+                                                    transform_pos((img_original_width, img_original_height),
+                                                                (overall_width, overall_height), 
+                                                                int(value), 
+                                                                'x' if k%2==0 else 'y'))
+                    # else:
+                    #     targets[j, k] = normalization(overall_height, 
+                    #                                   transform_pos((img_original_width, img_original_height), 
+                    #                                                 (overall_width, overall_height), 
+                    #                                                 int(value),
+                    #                                                 'y'))
         else:
             exit()
         
@@ -257,19 +257,19 @@ def show_train_result(history):
     plt.figure() 
 
 
-def show_predict_result_with_real_points(i):
+def show_predict_result_with_real_points(i, pre_len):
     t = imgs_data_overall[i] / 255.0
     t = np.expand_dims(t, axis=0)
     prediction=model.predict(t)[0]
     print(prediction)
     for j, x in enumerate(prediction):
         prediction[j] = revert_normalization(overall_height, x) 
-    x_list=prediction[np.arange(0,9,2)]
-    y_list=prediction[np.arange(1,10,2)]
-    x_list_real = pos_data[i][np.arange(0,9,2)]
+    x_list=prediction[np.arange(0,pre_len-1,2)]
+    y_list=prediction[np.arange(1,pre_len,2)]
+    x_list_real = pos_data[i][np.arange(0,pre_len-1,2)]
     for j, x in enumerate(x_list_real):
         x_list_real[j] = transform_pos((img_original_width, img_original_height), (overall_width, overall_height), x, 'x')
-    y_list_real = pos_data[i][np.arange(1,10,2)]
+    y_list_real = pos_data[i][np.arange(1,pre_len,2)]
     for j, y in enumerate(y_list_real):
         y_list_real[j] = transform_pos((img_original_width, img_original_height), (overall_width, overall_height), y, 'y')
 
@@ -285,7 +285,7 @@ import os
 import numpy as np
 from keras.preprocessing.image import load_img, img_to_array, array_to_img
 
-base_dir = 'E:/Developer/keras/Face Detection/CelebA/Img'
+base_dir = '/Users/zhangdefu/Desktop'
 
 train_dir = os.path.join(base_dir, 'img_align_celeba')
 validation_dir = os.path.join(base_dir, 'validation')
@@ -296,7 +296,8 @@ predict_dir = os.path.join(base_dir, 'prediction')
 
 # 读顺序为：矩阵有多pic_num个，即pic_num张图片，每张图片height行，每行width个像素，每个像素channels_num个值
 imgs_data_overall = np.zeros((pic_num, overall_height, overall_width, channels_num), dtype=int)
-imgs_data_topbot = np.zeros((pic_num, topbot_height, topbot_width, channels_num), dtype=int)
+imgs_data_top = np.zeros((pic_num, topbot_height, topbot_width, channels_num), dtype=int)
+imgs_data_bot = np.zeros((pic_num, topbot_height, topbot_width, channels_num), dtype=int)
 
 for i, filename in enumerate(os.listdir(train_dir)):
     #由于os.listdir并不是按着名字顺序排序的，所以需要将名称映射出索引志
@@ -311,13 +312,26 @@ for i, filename in enumerate(os.listdir(train_dir)):
     img1.close()
     # img2.close()
 
-pos_num, pos_data = loadPosData('E:/Developer/keras/Face Detection/CelebA/Anno/list_landmarks_align_celeba.txt')
+imgs_data_top[:, :, :, :] = imgs_data_overall[:, :topbot_height, :, :]
+imgs_data_bot[:, :, :, :] = imgs_data_overall[:, overall_height - topbot_height:, :, :]
+
+pos_num, pos_data = loadPosData('/Users/zhangdefu/Desktop/Anno/list_landmarks_align_celeba.txt')
 
 for i in np.random.randint(0, 5000, 5):
-    show_raw_image_with_points(i, imgs_data_overall, pos_data, True)
+    show_raw_image_with_points(i, imgs_data_top, pos_data, True)
 
-import matplotlib.pyplot as plt
 batch_size = 20
+
+val_steps = (val_pic_num) // batch_size
+test_steps = (test_pic_num) // batch_size
+
+from keras.optimizers import RMSprop, SGD
+from keras import callbacks
+
+
+################# 训练F1模型#########################
+model = build_F1_model()
+print(model.summary())
 
 train_gen = face_pos_generator(imgs_data_overall,
                                pos_data,
@@ -338,18 +352,6 @@ test_gen = face_pos_generator(imgs_data_overall,
                               min_index=train_pic_num+val_pic_num+1,
                               max_index=None,
                               batch_size=batch_size)
-
-
-val_steps = (val_pic_num) // batch_size
-test_steps = (test_pic_num) // batch_size
-
-from keras.optimizers import RMSprop, SGD
-from keras import callbacks
-
-
-################# 训练F1模型#########################
-model = build_F1_model()
-print(model.summary())
 
 
 callbacks_list = [
@@ -373,11 +375,56 @@ history = model.fit_generator(train_gen,
 
 show_train_result(history)
 
-show_predict_result_with_real_points(1)
+show_predict_result_with_real_points(1, 10)
 
 for i in np.random.randint(4500, 5000, 4):
-    show_predict_result_with_real_points(i)
+    show_predict_result_with_real_points(i, 10)
 
 
-##########################训练EN1模型
+########################## 训练EN1模型 ##########################
 en1_model = build_EN1_model()
+
+train_gen = face_pos_generator(imgs_data_overall,
+                               pos_data,
+                               'top',
+                               min_index=0,
+                               max_index=train_pic_num,
+                            #    shuffle=True,
+                               batch_size=batch_size)
+val_gen = face_pos_generator(imgs_data_overall,
+                             pos_data,
+                             'top',
+                             min_index=train_pic_num+1,
+                             max_index=train_pic_num+val_pic_num,
+                             batch_size=batch_size)
+test_gen = face_pos_generator(imgs_data_overall,
+                              pos_data,
+                              'top',
+                              min_index=train_pic_num+val_pic_num+1,
+                              max_index=None,
+                              batch_size=batch_size)
+
+
+
+callbacks_list = [
+    callbacks.EarlyStopping(patience=5, monitor='val_loss'),
+    callbacks.ModelCheckpoint('model/EN1_Model.h5', 
+                              save_best_only=True, save_weights_only=False, mode='auto', period=1),
+    callbacks.LearningRateScheduler(lambda epoch: float(np.linspace(0.03, 0.01, 500)[epoch]))
+]
+
+model.compile(optimizer=SGD(lr=0.03, momentum=0.9, nesterov=True), loss='mse')
+
+history = model.fit_generator(train_gen,
+                              steps_per_epoch=train_pic_num // batch_size,
+                              epochs=500, 
+                              callbacks=callbacks_list,
+                              validation_data=val_gen,
+                              validation_steps=val_steps)
+
+show_train_result(history)
+
+show_predict_result_with_real_points(1, 6)
+
+for i in np.random.randint(4500, 5000, 4):
+    show_predict_result_with_real_points(i, 6)
