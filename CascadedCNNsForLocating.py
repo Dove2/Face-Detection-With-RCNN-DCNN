@@ -43,7 +43,7 @@ def build_EN1_model():
     return models.Model(top_input_tensor, y)
 
 def build_NM1_model():
-    bot_input_tensor = Input(shape=(31, 39, 3))
+    bot_input_tensor = Input(shape=(topbot_height, topbot_width, channels_num))
     z = layers.Conv2D(20, (4, 4), activation='relu', name='block3_conv1')(bot_input_tensor)
     z = layers.MaxPooling2D((2,2), name='block3_pooling1')(z)
     z = layers.Conv2D(40, (3, 3), activation='relu', name='block3_conv2')(z)
@@ -53,7 +53,7 @@ def build_NM1_model():
     z = layers.Conv2D(80, (2, 2), name='block3_conv4')(z)
     z = layers.Flatten()(z)
     z = layers.Dense(120, activation='relu', name='block3_dense1')(z)
-    z = layers.Dense(6, activation='relu', name='block3_dense2')(z)
+    z = layers.Dense(6, name='block3_dense2')(z)
     return models.Model(bot_input_tensor, z)
 
 # 测试图片读取是否成功
@@ -188,51 +188,30 @@ def face_pos_generator(imgs_data, pos_data, style, min_index, max_index, shuffle
                                                                 (overall_width, overall_height), 
                                                                 int(value), 
                                                                 'x' if k%2==0 else 'y'))
-                    # else:
-                    #     targets[j, k] = normalization(overall_height, 
-                    #                                   transform_pos((img_original_width, img_original_height), 
-                    #                                                 (overall_width, overall_height), 
-                    #                                                 int(value),
-                    #                                                 'y'))                                                                    
-
         elif style == 'top':
             samples = np.zeros((len(rows), topbot_height, topbot_width, channels_num)) 
             targets = np.zeros((len(rows), 6))
             for j, row in enumerate(rows):
                 samples[j] = imgs_data[rows[j]] / 255.
                 for k, value in enumerate(pos_data[rows[j], :6]):
-                    # if k % 2 == 0: # x坐标
+                    # 坐标并不会因为裁剪而改变
                     targets[j, k] = normalization(overall_width,
                                                     transform_pos((img_original_width, img_original_height),
                                                                 (overall_width, overall_height), 
                                                                 int(value), 
                                                                 'x' if k%2==0 else 'y'))
-                    # else:
-                    #     targets[j, k] = normalization(overall_height, 
-                    #                                   transform_pos((img_original_width, img_original_height), 
-                    #                                                 (overall_width, overall_height), 
-                    #                                                 int(value),
-                    #                                                 'y'))
         
         elif style == 'bot':
             samples = np.zeros((len(rows), topbot_height, topbot_width, channels_num)) 
             targets = np.zeros((len(rows), 6))
             for j, row in enumerate(rows):
                 samples[j] = imgs_data[rows[j]] / 255.
-                # targets[j] = pos_data[rows[j]][4:]
                 for k, value in enumerate(pos_data[rows[j], 4:]):
-                    # if k % 2 == 0: # x坐标
                     targets[j, k] = normalization(overall_width,
                                                     transform_pos((img_original_width, img_original_height),
                                                                 (overall_width, overall_height), 
                                                                 int(value), 
                                                                 'x' if k%2==0 else 'y'))
-                    # else:
-                    #     targets[j, k] = normalization(overall_height, 
-                    #                                   transform_pos((img_original_width, img_original_height), 
-                    #                                                 (overall_width, overall_height), 
-                    #                                                 int(value),
-                    #                                                 'y'))
         else:
             exit()
         
@@ -257,8 +236,8 @@ def show_train_result(history):
     plt.figure() 
 
 
-def show_predict_result_with_real_points(i, pre_len):
-    t = imgs_data_overall[i] / 255.0
+def show_predict_result_with_real_points(i, img_data, model, pre_len):
+    t = img_data[i] / 255.0
     t = np.expand_dims(t, axis=0)
     prediction=model.predict(t)[0]
     print(prediction)
@@ -266,10 +245,10 @@ def show_predict_result_with_real_points(i, pre_len):
         prediction[j] = revert_normalization(overall_height, x) 
     x_list=prediction[np.arange(0,pre_len-1,2)]
     y_list=prediction[np.arange(1,pre_len,2)]
-    x_list_real = pos_data[i][np.arange(0,pre_len-1,2)]
+    x_list_real = pos_data[i][np.arange(0,9,2)]
     for j, x in enumerate(x_list_real):
         x_list_real[j] = transform_pos((img_original_width, img_original_height), (overall_width, overall_height), x, 'x')
-    y_list_real = pos_data[i][np.arange(1,pre_len,2)]
+    y_list_real = pos_data[i][np.arange(1,10,2)]
     for j, y in enumerate(y_list_real):
         y_list_real[j] = transform_pos((img_original_width, img_original_height), (overall_width, overall_height), y, 'y')
 
@@ -285,7 +264,7 @@ import os
 import numpy as np
 from keras.preprocessing.image import load_img, img_to_array, array_to_img
 
-base_dir = '/Users/zhangdefu/Desktop'
+base_dir = 'E:/Document/Datasets/CelebA/Img'
 
 train_dir = os.path.join(base_dir, 'img_align_celeba')
 validation_dir = os.path.join(base_dir, 'validation')
@@ -315,10 +294,10 @@ for i, filename in enumerate(os.listdir(train_dir)):
 imgs_data_top[:, :, :, :] = imgs_data_overall[:, :topbot_height, :, :]
 imgs_data_bot[:, :, :, :] = imgs_data_overall[:, overall_height - topbot_height:, :, :]
 
-pos_num, pos_data = loadPosData('/Users/zhangdefu/Desktop/Anno/list_landmarks_align_celeba.txt')
+pos_num, pos_data = loadPosData('E:/Document/Datasets/CelebA/Anno/list_landmarks_align_celeba.txt')
 
-for i in np.random.randint(0, 5000, 5):
-    show_raw_image_with_points(i, imgs_data_top, pos_data, True)
+# for i in np.random.randint(0, 5000, 5):
+#     show_raw_image_with_points(i, imgs_data_top, pos_data, True)
 
 batch_size = 20
 
@@ -329,102 +308,205 @@ from keras.optimizers import RMSprop, SGD
 from keras import callbacks
 
 
-################# 训练F1模型#########################
-model = build_F1_model()
-print(model.summary())
+###################################### 训练F1模型##########################################
+# f1_model = build_F1_model()
+# print(f1_model.summary())
 
-train_gen = face_pos_generator(imgs_data_overall,
-                               pos_data,
-                               'overall',
-                               min_index=0,
-                               max_index=train_pic_num,
-                            #    shuffle=True,
-                               batch_size=batch_size)
-val_gen = face_pos_generator(imgs_data_overall,
-                             pos_data,
-                             'overall',
-                             min_index=train_pic_num+1,
-                             max_index=train_pic_num+val_pic_num,
-                             batch_size=batch_size)
-test_gen = face_pos_generator(imgs_data_overall,
-                              pos_data,
-                              'overall',
-                              min_index=train_pic_num+val_pic_num+1,
-                              max_index=None,
-                              batch_size=batch_size)
+# train_gen = face_pos_generator(imgs_data_overall,
+#                                pos_data,
+#                                'overall',
+#                                min_index=0,
+#                                max_index=train_pic_num,
+#                             #    shuffle=True,
+#                                batch_size=batch_size)
+# val_gen = face_pos_generator(imgs_data_overall,
+#                              pos_data,
+#                              'overall',
+#                              min_index=train_pic_num+1,
+#                              max_index=train_pic_num+val_pic_num,
+#                              batch_size=batch_size)
+# test_gen = face_pos_generator(imgs_data_overall,
+#                               pos_data,
+#                               'overall',
+#                               min_index=train_pic_num+val_pic_num+1,
+#                               max_index=None,
+#                               batch_size=batch_size)
 
 
-callbacks_list = [
-    callbacks.EarlyStopping(patience=5, monitor='val_loss'),
-    callbacks.ModelCheckpoint('model/F1_Model.h5', 
-                              save_best_only=True, save_weights_only=False, mode='auto', period=1),
-    callbacks.LearningRateScheduler(lambda epoch: float(np.linspace(0.03, 0.01, 500)[epoch]))
-]
+# callbacks_list = [
+#     callbacks.EarlyStopping(patience=5, monitor='val_loss'),
+#     callbacks.ModelCheckpoint('model/F1_Model.h5', 
+#                               save_best_only=True, save_weights_only=False, mode='auto', period=1),
+#     callbacks.LearningRateScheduler(lambda epoch: float(np.linspace(0.03, 0.01, 500)[epoch]))
+# ]
 
-model.compile(optimizer=SGD(lr=0.03, momentum=0.9, nesterov=True), loss='mse')
+# f1_model.compile(optimizer=SGD(lr=0.03, momentum=0.9, nesterov=True), loss='mse')
 
-history = model.fit_generator(train_gen,
-                              steps_per_epoch=train_pic_num // batch_size,
-                              epochs=500, 
-                              callbacks=callbacks_list,
-                              validation_data=val_gen,
-                              validation_steps=val_steps)
+# history = f1_model.fit_generator(train_gen,
+#                               steps_per_epoch=train_pic_num // batch_size,
+#                               epochs=500, 
+#                               callbacks=callbacks_list,
+#                               validation_data=val_gen,
+#                               validation_steps=val_steps)
 
-# print("evaluate train: ", model.evaluate_generator(train_gen, 3000))
-# print("evaluate test: ", model.evaluate_generator(test_gen, 500))
+# # print("evaluate train: ", model.evaluate_generator(train_gen, 3000))
+# # print("evaluate test: ", model.evaluate_generator(test_gen, 500))
 
-show_train_result(history)
+# show_train_result(history)
 
-show_predict_result_with_real_points(1, 10)
+# show_predict_result_with_real_points(1, imgs_data_overall, f1_model, 10)
 
-for i in np.random.randint(4500, 5000, 4):
-    show_predict_result_with_real_points(i, 10)
+# for i in np.random.randint(4500, 5000, 4):
+#     show_predict_result_with_real_points(i, imgs_data_overall, f1_model, 10)
 
 
 ########################## 训练EN1模型 ##########################
-en1_model = build_EN1_model()
+# en1_model = build_EN1_model()
 
-train_gen = face_pos_generator(imgs_data_overall,
-                               pos_data,
-                               'top',
-                               min_index=0,
-                               max_index=train_pic_num,
-                            #    shuffle=True,
-                               batch_size=batch_size)
-val_gen = face_pos_generator(imgs_data_overall,
-                             pos_data,
-                             'top',
-                             min_index=train_pic_num+1,
-                             max_index=train_pic_num+val_pic_num,
-                             batch_size=batch_size)
-test_gen = face_pos_generator(imgs_data_overall,
-                              pos_data,
-                              'top',
-                              min_index=train_pic_num+val_pic_num+1,
-                              max_index=None,
-                              batch_size=batch_size)
-
+# train_gen = face_pos_generator(imgs_data_top,
+#                                pos_data,
+#                                'top',
+#                                min_index=0,
+#                                max_index=train_pic_num,
+#                                batch_size=batch_size)
+# val_gen = face_pos_generator(imgs_data_top,
+#                              pos_data,
+#                              'top',
+#                              min_index=train_pic_num+1,
+#                              max_index=train_pic_num+val_pic_num,
+#                              batch_size=batch_size)
+# test_gen = face_pos_generator(imgs_data_top,
+#                               pos_data,
+#                               'top',
+#                               min_index=train_pic_num+val_pic_num+1,
+#                               max_index=None,
+#                               batch_size=batch_size)
 
 
-callbacks_list = [
-    callbacks.EarlyStopping(patience=5, monitor='val_loss'),
-    callbacks.ModelCheckpoint('model/EN1_Model.h5', 
-                              save_best_only=True, save_weights_only=False, mode='auto', period=1),
-    callbacks.LearningRateScheduler(lambda epoch: float(np.linspace(0.03, 0.01, 500)[epoch]))
-]
 
-model.compile(optimizer=SGD(lr=0.03, momentum=0.9, nesterov=True), loss='mse')
+# callbacks_list = [
+#     callbacks.EarlyStopping(patience=5, monitor='val_loss'),
+#     callbacks.ModelCheckpoint('model/EN1_Model.h5', 
+#                               save_best_only=True, save_weights_only=False, mode='auto', period=1),
+#     callbacks.LearningRateScheduler(lambda epoch: float(np.linspace(0.03, 0.01, 500)[epoch]))
+# ]
 
-history = model.fit_generator(train_gen,
-                              steps_per_epoch=train_pic_num // batch_size,
-                              epochs=500, 
-                              callbacks=callbacks_list,
-                              validation_data=val_gen,
-                              validation_steps=val_steps)
+# en1_model.compile(optimizer=SGD(lr=0.03, momentum=0.9, nesterov=True), loss='mse')
 
-show_train_result(history)
+# history = en1_model.fit_generator(train_gen,
+#                               steps_per_epoch=train_pic_num // batch_size,
+#                               epochs=500, 
+#                               callbacks=callbacks_list,
+#                               validation_data=val_gen,
+#                               validation_steps=val_steps)
 
-show_predict_result_with_real_points(1, 6)
+# show_train_result(history)
 
-for i in np.random.randint(4500, 5000, 4):
-    show_predict_result_with_real_points(i, 6)
+# show_predict_result_with_real_points(1, imgs_data_top, en1_model, 6)
+
+# for i in np.random.randint(4500, 5000, 4):
+#     show_predict_result_with_real_points(i, imgs_data_top, en1_model, 6)
+
+
+
+########################## 训练NM1模型 ##########################
+# nm1_model = build_NM1_model()
+
+# train_gen = face_pos_generator(imgs_data_bot,
+#                                pos_data,
+#                                'bot',
+#                                min_index=0,
+#                                max_index=train_pic_num,
+#                                batch_size=batch_size)
+# val_gen = face_pos_generator(imgs_data_bot,
+#                              pos_data,
+#                              'bot',
+#                              min_index=train_pic_num+1,
+#                              max_index=train_pic_num+val_pic_num,
+#                              batch_size=batch_size)
+# test_gen = face_pos_generator(imgs_data_bot,
+#                               pos_data,
+#                               'bot',
+#                               min_index=train_pic_num+val_pic_num+1,
+#                               max_index=None,
+#                               batch_size=batch_size)
+
+
+
+# callbacks_list = [
+#     callbacks.EarlyStopping(patience=5, monitor='val_loss'),
+#     callbacks.ModelCheckpoint('model/NM1_Model.h5', 
+#                               save_best_only=True, save_weights_only=False, mode='auto', period=1),
+#     callbacks.LearningRateScheduler(lambda epoch: float(np.linspace(0.03, 0.01, 500)[epoch]))
+# ]
+
+# nm1_model.compile(optimizer=SGD(lr=0.03, momentum=0.9, nesterov=True), loss='mse')
+
+# history = nm1_model.fit_generator(train_gen,
+#                               steps_per_epoch=train_pic_num // batch_size,
+#                               epochs=500, 
+#                               callbacks=callbacks_list,
+#                               validation_data=val_gen,
+#                               validation_steps=val_steps)
+
+# show_train_result(history)
+
+# show_predict_result_with_real_points(1, imgs_data_bot, nm1_model, 6)
+
+# for i in np.random.randint(4500, 5000, 4):
+#     show_predict_result_with_real_points(i, imgs_data_bot, nm1_model, 6)
+
+
+######################################## 加载模型并预测最终位置 ########################################################
+
+f1_model = models.load_model("model/F1_Model.h5")
+en1_model = models.load_model("model/EN1_Model.h5")
+nm1_model = models.load_model("model/NM1_Model.h5")
+
+def predict_lv1(f1_model, en1_model, nm1_model, img_index):
+    img_overall = imgs_data_overall[img_index] / 255.
+    img_top = imgs_data_top[img_index] / 255.
+    img_bot = imgs_data_bot[img_index] / 255.
+
+    img_overall = np.expand_dims(img_overall, axis=0)
+    img_top = np.expand_dims(img_top, axis=0)
+    img_bot = np.expand_dims(img_bot, axis=0)
+
+    f1_result = f1_model.predict(img_overall)[0]
+    en1_result = en1_model.predict(img_top)[0]
+    nm1_result = nm1_model.predict(img_bot)[0]
+    ############# test #######################
+    show_predict_result_with_real_points(img_index, imgs_data_overall, f1_model, 10)
+    show_predict_result_with_real_points(img_index, imgs_data_top, en1_model, 6)
+    show_predict_result_with_real_points(img_index, imgs_data_bot, nm1_model, 6)
+    ############# end test ###################
+    for j, x in enumerate(f1_result):
+        f1_result[j] = revert_normalization(overall_height, x) 
+    for j, x in enumerate(en1_result):
+        en1_result[j] = revert_normalization(overall_height, x) 
+    for j, x in enumerate(nm1_result):
+        nm1_result[j] = revert_normalization(overall_height, x) 
+
+    result = np.zeros((10))
+    result[:4] = (f1_result[:4] + en1_result[:4]) / 2
+    result[4:6] = (f1_result[4:6] + en1_result[4:6] + nm1_result[:2]) / 3
+    result[6:10] = (f1_result[6:10] + nm1_result[2:6]) / 2
+    print("result: ", result)
+    return result
+
+i = 4392
+prediction = predict_lv1(f1_model, en1_model, nm1_model, i)
+t = np.expand_dims(imgs_data_overall[i], axis=0)
+x_list=prediction[np.arange(0,9,2)]
+y_list=prediction[np.arange(1,10,2)]
+x_list_real = pos_data[i][np.arange(0,9,2)]
+for j, x in enumerate(x_list_real):
+    x_list_real[j] = transform_pos((img_original_width, img_original_height), (overall_width, overall_height), x, 'x')
+y_list_real = pos_data[i][np.arange(1,10,2)]
+for j, y in enumerate(y_list_real):
+    y_list_real[j] = transform_pos((img_original_width, img_original_height), (overall_width, overall_height), y, 'y')
+
+plt.imshow(np.squeeze(t[0]), cmap='gray')
+plt.scatter(x_list,y_list,c='r')
+plt.scatter(x_list_real,y_list_real,c='b')
+plt.show()
