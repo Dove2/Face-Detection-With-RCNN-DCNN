@@ -53,38 +53,67 @@ def rpn(base_layers):
 # print(model.summary())
 
 # 加载位置数据
-def load_gt_boxes(fpath): 
+# def load_gt_boxes(fpath): 
+#     """
+#     get the information about all groud true of images.
+#     Args:
+#         fpath: the path of the csv file.
+#     Return:
+#         num: the gt boxes num.
+#         gt_boxes: [centre_x, centre_y, width, height] of all images.
+#     """
+#     f = open(fpath)
+#     data = f.read()
+#     f.close()
+
+#     lines = data.split('\n')
+#     header = lines[1].split(' ')
+#     lines = lines[2:-1]
+
+#     num = len(lines)
+#     id_stride = 12
+#     gt_data = np.zeros((len(lines), len(header) - 1))
+#     for i, line in enumerate(lines):
+#         x_min, y_min, width, height = [float(x) for x in list(filter(None, line[id_stride:].split(' ')))]
+#         gt_data[i, 0] = x_min 
+#         gt_data[i, 2] = x_min + width - 1
+#         gt_data[i, 1] = y_min
+#         gt_data[i, 3] = y_min + height - 1
+    
+#     return (num, gt_data)
+
+def load_wider_face_gt_boxes(fpath): 
     """
-    get the information about all groud true of images.
+    get the information about all groud true of images in wider face datasets.
     Args:
-        fpath: the path of the csv file.
+        fpath: the path of the txt file.
     Return:
         num: the gt boxes num.
-        gt_boxes: [centre_x, centre_y, width, height] of all images.
+        gt_boxes: [x_min, y_min, x_max, y_max]s of all images.
     """
     f = open(fpath)
     data = f.read()
     f.close()
 
+    # header = ["x1", "y1", "w", "h", "blur", "expression", "illumination", "invalid", "occlusion", "pose"]
     lines = data.split('\n')
-    header = lines[1].split(' ')
-    lines = lines[2:-1]
-
-    num = len(lines)
-    id_stride = 12
-    gt_data = np.zeros((len(lines), len(header) - 1))
-    for i, line in enumerate(lines):
-        x_min, y_min, width, height = [float(x) for x in list(filter(None, line[id_stride:].split(' ')))]
-        gt_data[i, 0] = x_min 
-        gt_data[i, 2] = x_min + width - 1
-        gt_data[i, 1] = y_min
-        gt_data[i, 3] = y_min + height - 1
+    gt_data = {}
+    i = 0
+    while True:
+        gt_box_num = 1 if int(lines[i+1]) == 0 else int(lines[i+1])
+        gt_pos = np.zeros((gt_box_num, 4))
+        for j, bbox_list in enumerate([x.split(' ')[:4] for x in lines[i+2:i+gt_box_num+2]]):
+            gt_pos[j] = [float(x) for x in bbox_list]
+            gt_pos[j, 2] = gt_pos[j, 0] + gt_pos[j, 2] - 1
+            gt_pos[j, 3] = gt_pos[j, 1] + gt_pos[j, 3] - 1
+        gt_data[lines[i]] = gt_pos
+        i += gt_box_num + 2
+        if i >= len(lines) - 1: #最后一行有一个换行
+            break
     
-    return (num, gt_data)
+    return gt_data
 
-num, gt_data = load_gt_boxes("E:/Document/Downloads/CelebA/Anno/list_bbox_celeba.txt")
-print(num)
-print(gt_data)
+gt_data = load_wider_face_gt_boxes("E:/Document/Datasets/Wider Face/wider_face_split/wider_face_train_bbx_gt.txt")
 
 k=9 #anchor number for each point
 ##################  RPN Model  #######################
@@ -120,7 +149,8 @@ BG_FG_FRAC=2
 
 #load an example to void graph problem
 #TODO fix this.
-pretrained_model = InceptionResNetV2(include_top=False)
+# 由于InceptionResNetV2下采样太多倍，而人脸通常比较小，因此这里采用VGG16只下采样16倍
+pretrained_model = InceptionResNetV2(include_top=False)#VGG16(include_top=False) #
 img=load_img("E:/Share/ILSVRC2014_train_00010391.JPEG")
 x = img_to_array(img)
 x = np.expand_dims(x, axis=0)
@@ -144,9 +174,10 @@ def produce_batch(filepath, gt_boxes):
     # 用图片的长宽除以feature map的长宽，获得步长
     w_stride = img_width / width
     h_stride = img_height / height
+    # print("w_stride, h_stride", w_stride, h_stride)
     # 根据步长计算anchors
     #base anchors are 9 anchors wrt a tile (0,0,w_stride-1,h_stride-1)
-    base_anchors=generate_anchors(w_stride,h_stride)
+    base_anchors=generate_anchors(w_stride,h_stride, scales=np.asarray([1, 2, 4]))
     #slice tiles according to image size and stride.
     #each 1x1x1532 feature map is mapping to a tile.
     shift_x = np.arange(0, width) * w_stride
@@ -209,7 +240,7 @@ def produce_batch(filepath, gt_boxes):
         disable_inds = npr.choice(
             bg_inds, size=(len(bg_inds) - num_bg), replace=False) # 从np.arange(0, bg_inds)中随机选len(bg_inds) - num_bg个
         labels[disable_inds] = -1
-    # 从这里开始，计算batch
+    # 从这里开始，计算batch，batch_inds是所有不被忽略的points
     batch_inds=inds_inside[labels!=-1]
     # 是这样的，首先batch_inds获得了在特征图内部的的anchor的索引值，又因为anchor排列是按9个9个排下来的，因此除9就是为了得到这个anchor对应的坐标
     batch_inds=(batch_inds / k).astype(np.int)
@@ -248,17 +279,21 @@ def produce_batch(filepath, gt_boxes):
 ##################  generate data  #######################
 print("generate data")
 CelebA_dataset_path='E:/Document/Downloads/CelebA/Img/img_celeba'
+wider_face_dataset_path = "E:/Document/Datasets/Wider Face/WIDER_train/images"
 import os
 
-def input_generator(gt_data, batch_size=20):
+def input_generator(gt_data, batch_size=32):
     batch_tiles=[]
     batch_labels=[]
     batch_bboxes=[]
     while 1:
-        for jpg_index in range(20000):
-            fname = os.path.join(CelebA_dataset_path, "{}.jpg".format(jpg_index+1).zfill(10))
-            gt_boxes = np.expand_dims(gt_data[jpg_index, :], axis=0)
+        # for jpg_index in range(20000):
+            # fname = os.path.join(CelebA_dataset_path, "{}.jpg".format(jpg_index+1).zfill(10))
+            # gt_boxes = np.expand_dims(gt_data[jpg_index, :], axis=0)
+        for path, gt_boxes in gt_data.items():
+            fname = os.path.join(wider_face_dataset_path, path)
             tiles, labels, bboxes = produce_batch(fname, gt_boxes)
+            # print("produce batch done.", path, len(bboxes))
             if tiles is None or labels is None or bboxes is None:
                 print("continue")
                 continue
@@ -270,8 +305,8 @@ def input_generator(gt_data, batch_size=20):
                     a=np.asarray(batch_tiles)
                     b=np.asarray(batch_labels)
                     c=np.asarray(batch_bboxes)
-                    if not a.any() or not b.any() or not c.any():
-                        print("empty array found.")
+                    if not a.any() or not b.any() or not c.any(): #if a中所有的的值
+                        print("empty array found.", batch_tiles, tiles[i]) # it should not happen
 
                     yield a, [b, c]
                     batch_tiles=[]
@@ -281,8 +316,8 @@ def input_generator(gt_data, batch_size=20):
 
 ##################   start train   #######################
 from keras.callbacks import ModelCheckpoint
-checkpointer = ModelCheckpoint(filepath='E:/Developer/keras/Face Detection/model/RPN.hdf5', verbose=1, save_best_only=True)
-history = model.fit_generator(input_generator(gt_data), steps_per_epoch=100, epochs=800, callbacks=[checkpointer])
+checkpointer = ModelCheckpoint(filepath='model/RPN.hdf5', verbose=1, save_best_only=True)
+history = model.fit_generator(input_generator(gt_data), steps_per_epoch=1000, epochs=800, callbacks=[checkpointer])
 
 # 观察训练结果
 import matplotlib.pyplot as plt
