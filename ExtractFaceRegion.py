@@ -149,7 +149,7 @@ BG_FG_FRAC=2
 
 #load an example to void graph problem
 #TODO fix this.
-# 由于InceptionResNetV2下采样太多倍，而人脸通常比较小，因此这里采用VGG16只下采样16倍
+# 由于InceptionResNetV2下采40倍，VGG16下采样32倍
 pretrained_model = InceptionResNetV2(include_top=False) # VGG16(include_top=False) #
 img=load_img("E:/Share/ILSVRC2014_train_00010391.JPEG")
 x = img_to_array(img)
@@ -291,6 +291,8 @@ def input_generator(gt_data, batch_size=32):
             # fname = os.path.join(CelebA_dataset_path, "{}.jpg".format(jpg_index+1).zfill(10))
             # gt_boxes = np.expand_dims(gt_data[jpg_index, :], axis=0)
         for path, gt_boxes in gt_data.items():
+            if not filter_out_gt_boxes(gt_boxes, 39):
+                continue
             fname = os.path.join(wider_face_dataset_path, path)
             tiles, labels, bboxes = produce_batch(fname, gt_boxes)
             # print("produce batch done.", path, len(bboxes))
@@ -312,7 +314,7 @@ def input_generator(gt_data, batch_size=32):
                         if not b.any():
                             print("It is because b.any() is False")
                         if not c.any():
-                            print("It is because c.any() is False")
+                            print("It is because c.any() is False", c)
                         
 
                     yield a, [b, c]
