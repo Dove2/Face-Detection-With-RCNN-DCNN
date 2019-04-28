@@ -150,7 +150,7 @@ BG_FG_FRAC=2
 #load an example to void graph problem
 #TODO fix this.
 # 由于InceptionResNetV2下采样太多倍，而人脸通常比较小，因此这里采用VGG16只下采样16倍
-pretrained_model = InceptionResNetV2(include_top=False)#VGG16(include_top=False) #
+pretrained_model = InceptionResNetV2(include_top=False) # VGG16(include_top=False) #
 img=load_img("E:/Share/ILSVRC2014_train_00010391.JPEG")
 x = img_to_array(img)
 x = np.expand_dims(x, axis=0)
@@ -177,7 +177,7 @@ def produce_batch(filepath, gt_boxes):
     # print("w_stride, h_stride", w_stride, h_stride)
     # 根据步长计算anchors
     #base anchors are 9 anchors wrt a tile (0,0,w_stride-1,h_stride-1)
-    base_anchors=generate_anchors(w_stride,h_stride, scales=np.asarray([1, 2, 4]))
+    base_anchors = generate_anchors(w_stride, h_stride, scales=np.asarray([1, 2, 4]))
     #slice tiles according to image size and stride.
     #each 1x1x1532 feature map is mapping to a tile.
     shift_x = np.arange(0, width) * w_stride
@@ -226,12 +226,12 @@ def produce_batch(filepath, gt_boxes):
     # 设置负面标签
     labels[max_overlaps <= .3] = 0
     # subsample positive labels if we have too many
-#     num_fg = int(RPN_FG_FRACTION * RPN_BATCHSIZE)
+    # num_fg = int(RPN_FG_FRACTION * RPN_BATCHSIZE)
     fg_inds = np.where(labels == 1)[0]
-#     if len(fg_inds) > num_fg:
-#         disable_inds = npr.choice(
-#             fg_inds, size=(len(fg_inds) - num_fg), replace=False)
-#         labels[disable_inds] = -1
+    # if len(fg_inds) > num_fg:
+    #     disable_inds = npr.choice(
+    #         fg_inds, size=(len(fg_inds) - num_fg), replace=False)
+    #     labels[disable_inds] = -1
     # subsample negative labels if we have too many
     num_bg = int(len(fg_inds) * BG_FG_FRAC)
     bg_inds = np.where(labels == 0)[0]
@@ -269,11 +269,11 @@ def produce_batch(filepath, gt_boxes):
         batch_tiles.append(fc_3x3)
     return np.asarray(batch_tiles), batch_label_targets.tolist(), batch_bbox_targets.tolist()
 
-# gt_boxes = [[0, 0, 20, 20]]
-# produce_batch("/Users/zhangdefu/Downloads/ILSVRC2014_train_00010391.JPEG", gt_boxes, [1, 1])
-# print("done")
-
-
+def filter_out_gt_boxes(gt_boxes, shreshold):
+    for item in gt_boxes:
+        if item[2] - item[0] >= shreshold and item[3] - item[1] >= shreshold:
+            return True
+    return False
 
 # exit()
 ##################  generate data  #######################
@@ -305,8 +305,15 @@ def input_generator(gt_data, batch_size=32):
                     a=np.asarray(batch_tiles)
                     b=np.asarray(batch_labels)
                     c=np.asarray(batch_bboxes)
-                    if not a.any() or not b.any() or not c.any(): #if a中所有的的值
-                        print("empty array found.", batch_tiles, tiles[i]) # it should not happen
+                    if not a.any() or not b.any() or not c.any(): #if a或b或c中所有的的值都是0
+                        print("empty array found.") # 当gt_box比较小的时候就会这样
+                        if not a.any():
+                            print("It is because a.any() is False")
+                        if not b.any():
+                            print("It is because b.any() is False")
+                        if not c.any():
+                            print("It is because c.any() is False")
+                        
 
                     yield a, [b, c]
                     batch_tiles=[]
