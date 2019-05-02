@@ -114,7 +114,6 @@ def load_wider_face_gt_boxes(fpath):
     return gt_data
 
 gt_data = load_wider_face_gt_boxes("E:/Document/Datasets/Wider Face/wider_face_split/wider_face_train_bbx_gt.txt")
-
 k=8 #anchor number for each point
 ##################  RPN Model  #######################
 feature_map_tile = Input(shape=(None,None,512)) #1536
@@ -282,60 +281,76 @@ print("generate data")
 CelebA_dataset_path='E:/Document/Downloads/CelebA/Img/img_celeba'
 wider_face_dataset_path = "E:/Document/Datasets/Wider Face/WIDER_train/images"
 import os
+from multiprocessing import Process, Queue
 
-def input_generator(gt_data, batch_size=256):
+
+def worker(gt_data, q, batch_size=256):
     batch_tiles=[]
     batch_labels=[]
     batch_bboxes=[]
-    while 1:
+    # while 1:
         # for jpg_index in range(20000):
             # fname = os.path.join(CelebA_dataset_path, "{}.jpg".format(jpg_index+1).zfill(10))
             # gt_boxes = np.expand_dims(gt_data[jpg_index, :], axis=0)
-        for path, gt_boxes in gt_data.items():
-            if not filter_out_gt_boxes(gt_boxes, 39):
-                continue
-            fname = os.path.join(wider_face_dataset_path, path)
-            tiles, labels, bboxes = produce_batch(fname, gt_boxes)
-            # print("produce batch done.", path, len(bboxes))
-            if tiles is None or labels is None or bboxes is None:
-                print("continue")
-                continue
-            for i in range(len(tiles)):
-                batch_tiles.append(tiles[i])
-                batch_labels.append(labels[i])
-                batch_bboxes.append(bboxes[i])
-                if(len(batch_tiles)==batch_size):
-                    a=np.asarray(batch_tiles)
-                    b=np.asarray(batch_labels)
-                    c=np.asarray(batch_bboxes)
-                    if not a.any() or not b.any() or not c.any(): #if a或b或c中所有的的值都是0
-                        print("empty array found.") # 当gt_box比较小的时候就会这样
-                        if not a.any():
-                            print("It is because a.any() is False")
-                        if not b.any():
-                            print("It is because b.any() is False")
-                        if not c.any():
-                            print("It is because c.any() is False", c)
-                        
-
-                    yield a, [b, c]
-                    batch_tiles=[]
-                    batch_labels=[]
-                    batch_bboxes=[]
+    for path, gt_boxes in gt_data.items():
+        # if not filter_out_gt_boxes(gt_boxes, 39):
+        #     continue
+        fname = os.path.join(wider_face_dataset_path, path)
+        tiles, labels, bboxes = produce_batch(fname, gt_boxes)
+        # print("produce batch done.", path, len(bboxes))
+        if tiles is None or labels is None or bboxes is None:
+            print("continue")
+            continue
+        for i in range(len(tiles)):
+            batch_tiles.append(tiles[i])
+            batch_labels.append(labels[i])
+            batch_bboxes.append(bboxes[i])
+            if(len(batch_tiles)==batch_size):
+                a=np.asarray(batch_tiles)
+                b=np.asarray(batch_labels)
+                c=np.asarray(batch_bboxes)
+                if not a.any() or not b.any() or not c.any(): #if a或b或c中所有的的值都是0
+                    print("empty array found.") # 当gt_box比较小的时候就会这样
+                    if not a.any():
+                        print("It is because a.any() is False")
+                    if not b.any():
+                        print("It is because b.any() is False")
+                    if not c.any():
+                        print("It is because c.any() is False", c)
+                    
+                q.put([a, b, c])
+                batch_tiles=[]
+                batch_labels=[]
+                batch_bboxes=[]
 
 
 q = Queue(20)
+count = 0
+sub_gt_data_1 = {}
+sub_gt_data_2 = {}
+sub_gt_data_3 = {}
+sub_gt_data_4 = {}
+for path, gt_boxes in gt_data.items():
+    if count < 3220:
+        sub_gt_data_1[path] = gt_boxes
+    elif count < 3220 * 2:
+        sub_gt_data_2[path] = gt_boxes
+    elif count < 3220 * 3:
+        sub_gt_data_3[path] = gt_boxes
+    elif count < 3220 * 4:
+        sub_gt_data_4[path] = gt_boxes
+    count += 1
 
-p1 = Process(target=worker, args=('/ImageSets/DET/train_*[0-1].txt',q))
+p1 = Process(target=worker, args=(sub_gt_data_1,q))
 p1.start()
-p2 = Process(target=worker, args=('/ImageSets/DET/train_*[2-3].txt',q))
+p2 = Process(target=worker, args=(sub_gt_data_2,q))
 p2.start()
-p3 = Process(target=worker, args=('/ImageSets/DET/train_*[4-6].txt',q))
+p3 = Process(target=worker, args=(sub_gt_data_3,q))
 p3.start()
-p4 = Process(target=worker, args=('/ImageSets/DET/train_*[7-9].txt',q))
+p4 = Process(target=worker, args=(sub_gt_data_4,q))
 p4.start()
 
-##################  start training  #######################
+#################  start training  #######################
 def input_generator():
     count=0
     while 1:
@@ -343,8 +358,8 @@ def input_generator():
         yield batch[0], [batch[1], batch[2]]
 
 from keras.callbacks import ModelCheckpoint
-checkpointer = ModelCheckpoint(filepath='model/RPN.hdf5', verbose=1, save_best_only=True)
-history = model.fit_generator(input_generator(gt_data), steps_per_epoch=20, epochs=800, callbacks=[checkpointer])
+checkpointer = ModelCheckpoint(filepath='model/RPN_multiprocessing.hdf5', verbose=1, save_best_only=True)
+history = model.fit_generator(input_generator(), steps_per_epoch=1000, epochs=100, callbacks=[checkpointer])
 
 # 观察训练结果
 import matplotlib.pyplot as plt
