@@ -324,7 +324,24 @@ def input_generator(gt_data, batch_size=256):
                     batch_bboxes=[]
 
 
-##################   start train   #######################
+q = Queue(20)
+
+p1 = Process(target=worker, args=('/ImageSets/DET/train_*[0-1].txt',q))
+p1.start()
+p2 = Process(target=worker, args=('/ImageSets/DET/train_*[2-3].txt',q))
+p2.start()
+p3 = Process(target=worker, args=('/ImageSets/DET/train_*[4-6].txt',q))
+p3.start()
+p4 = Process(target=worker, args=('/ImageSets/DET/train_*[7-9].txt',q))
+p4.start()
+
+##################  start training  #######################
+def input_generator():
+    count=0
+    while 1:
+        batch = q.get()
+        yield batch[0], [batch[1], batch[2]]
+
 from keras.callbacks import ModelCheckpoint
 checkpointer = ModelCheckpoint(filepath='model/RPN.hdf5', verbose=1, save_best_only=True)
 history = model.fit_generator(input_generator(gt_data), steps_per_epoch=20, epochs=800, callbacks=[checkpointer])
