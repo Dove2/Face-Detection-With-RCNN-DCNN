@@ -115,11 +115,11 @@ def load_wider_face_gt_boxes(fpath):
 
 gt_data = load_wider_face_gt_boxes("E:/Document/Datasets/Wider Face/wider_face_split/wider_face_train_bbx_gt.txt")
 
-k=9 #anchor number for each point
+k=8 #anchor number for each point
 ##################  RPN Model  #######################
-feature_map_tile = Input(shape=(None,None,1536))
+feature_map_tile = Input(shape=(None,None,512)) #1536
 convolution_3x3 = Conv2D(
-    filters=512,
+    filters=256, # 512
     kernel_size=(3, 3),
     padding='same',
     name="3x3"
@@ -150,7 +150,7 @@ BG_FG_FRAC=2
 #load an example to void graph problem
 #TODO fix this.
 # 由于InceptionResNetV2下采40倍，VGG16下采样32倍
-pretrained_model = InceptionResNetV2(include_top=False) # VGG16(include_top=False) #
+pretrained_model = VGG16(include_top=False, weights='imagenet') # InceptionResNetV2(include_top=False) # VGG16(include_top=False) #
 img=load_img("E:/Share/ILSVRC2014_train_00010391.JPEG")
 x = img_to_array(img)
 x = np.expand_dims(x, axis=0)
@@ -177,7 +177,8 @@ def produce_batch(filepath, gt_boxes):
     # print("w_stride, h_stride", w_stride, h_stride)
     # 根据步长计算anchors
     #base anchors are 9 anchors wrt a tile (0,0,w_stride-1,h_stride-1)
-    base_anchors = generate_anchors(w_stride, h_stride, scales=np.asarray([1, 2, 4]))
+    # base_anchors = generate_anchors(w_stride, h_stride, scales=np.asarray([1, 2, 4]))
+    base_anchors = generate_anchors(16, 16, ratios=[0.5, 1], scales=np.asarray([1, 2, 8, 16]))
     #slice tiles according to image size and stride.
     #each 1x1x1532 feature map is mapping to a tile.
     shift_x = np.arange(0, width) * w_stride
@@ -187,8 +188,8 @@ def produce_batch(filepath, gt_boxes):
     shifts = np.vstack((shift_x.ravel(), shift_y.ravel(), shift_x.ravel(), shift_y.ravel())).transpose()
 
     # 事实证明，对shape为(1, 9, 4)的矩阵与shape为(num_feature_map, 1, 4)的矩阵相加结果是得到shape为(num_feature_map, 9, 4)
-    all_anchors = (base_anchors.reshape((1, 9, 4)) + shifts.reshape((1, num_feature_map, 4)).transpose((1, 0, 2)))
-    total_anchors = num_feature_map*9
+    all_anchors = (base_anchors.reshape((1, k, 4)) + shifts.reshape((1, num_feature_map, 4)).transpose((1, 0, 2)))
+    total_anchors = num_feature_map*k
     all_anchors = all_anchors.reshape((total_anchors, 4))
     #only keep anchors inside image+borader.
     border=0
@@ -282,7 +283,7 @@ CelebA_dataset_path='E:/Document/Downloads/CelebA/Img/img_celeba'
 wider_face_dataset_path = "E:/Document/Datasets/Wider Face/WIDER_train/images"
 import os
 
-def input_generator(gt_data, batch_size=32):
+def input_generator(gt_data, batch_size=256):
     batch_tiles=[]
     batch_labels=[]
     batch_bboxes=[]
@@ -326,7 +327,7 @@ def input_generator(gt_data, batch_size=32):
 ##################   start train   #######################
 from keras.callbacks import ModelCheckpoint
 checkpointer = ModelCheckpoint(filepath='model/RPN.hdf5', verbose=1, save_best_only=True)
-history = model.fit_generator(input_generator(gt_data), steps_per_epoch=1000, epochs=800, callbacks=[checkpointer])
+history = model.fit_generator(input_generator(gt_data), steps_per_epoch=20, epochs=800, callbacks=[checkpointer])
 
 # 观察训练结果
 import matplotlib.pyplot as plt
