@@ -1,8 +1,9 @@
-import sys
+import sys, os, csv
 import numpy as np
 import keras.backend as K
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw
+from keras.preprocessing.image import load_img, img_to_array
 
 def parse_label(xml_file):
     try:
@@ -288,3 +289,61 @@ def unmap(data, count, inds, fill=0):
         ret.fill(fill)
         ret[inds, :] = data
     return ret
+
+
+
+def load_wider_face_gt_boxes(fpath): 
+    """
+    get the information about all groud true of images in wider face datasets.
+    Args:
+        fpath: the path of the txt file.
+    Return:
+        num: the gt boxes num.
+        gt_boxes: [x_min, y_min, x_max, y_max]s of all images.
+    """
+    f = open(fpath)
+    data = f.read()
+    f.close()
+
+    # header = ["x1", "y1", "w", "h", "blur", "expression", "illumination", "invalid", "occlusion", "pose"]
+    lines = data.split('\n')
+    gt_data = {}
+    i = 0
+    while True:
+        gt_box_num = 1 if int(lines[i+1]) == 0 else int(lines[i+1])
+        gt_pos = np.zeros((gt_box_num, 4))
+        for j, bbox_list in enumerate([x.split(' ')[:4] for x in lines[i+2:i+gt_box_num+2]]):
+            gt_pos[j] = [float(x) for x in bbox_list]
+            gt_pos[j, 2] = gt_pos[j, 0] + gt_pos[j, 2] - 1
+            gt_pos[j, 3] = gt_pos[j, 1] + gt_pos[j, 3] - 1
+        gt_data[lines[i]] = gt_pos
+        i += gt_box_num + 2
+        if i >= len(lines) - 1: #最后一行有一个换行
+            break
+    
+    return gt_data
+
+
+def load_feature_maps(gt_data):
+    feature_maps = {}
+    for path in gt_data.keys():
+        filepath = os.path.join("feature_maps", path)[:-4]
+        feature_maps[filepath] = np.load(filepath)["fc"]
+    print("##############################load feature maps done.##############################")
+    return feature_maps
+
+
+
+def get_imgs_w_h(path):
+    w_h = {}
+    f = open(path)
+    data = f.read()
+    f.close()
+
+    lines = data.split('\n')[1:-1]
+    # print(len(lines))
+    for line in lines:
+        l = line.split(',')
+        w_h[l[0]] = (int(l[1]), int(l[2]))
+
+    return w_h

@@ -5,7 +5,8 @@ from keras.layers import Conv2D
 from keras.models import Input, Model
 from keras.applications import InceptionResNetV2, VGG16
 from keras.preprocessing.image import load_img, img_to_array
-from utils import generate_anchors, draw_anchors, bbox_overlaps, bbox_transform, loss_cls, smoothL1, parse_label, unmap 
+from utils import generate_anchors, draw_anchors, bbox_overlaps, bbox_transform, loss_cls, smoothL1, parse_label, unmap,\
+     load_wider_face_gt_boxes, get_imgs_w_h, load_feature_maps
 
 from keras import models, layers, Input
 import numpy 
@@ -82,43 +83,15 @@ def rpn(base_layers):
     
 #     return (num, gt_data)
 
-def load_wider_face_gt_boxes(fpath): 
-    """
-    get the information about all groud true of images in wider face datasets.
-    Args:
-        fpath: the path of the txt file.
-    Return:
-        num: the gt boxes num.
-        gt_boxes: [x_min, y_min, x_max, y_max]s of all images.
-    """
-    f = open(fpath)
-    data = f.read()
-    f.close()
-
-    # header = ["x1", "y1", "w", "h", "blur", "expression", "illumination", "invalid", "occlusion", "pose"]
-    lines = data.split('\n')
-    gt_data = {}
-    i = 0
-    while True:
-        gt_box_num = 1 if int(lines[i+1]) == 0 else int(lines[i+1])
-        gt_pos = np.zeros((gt_box_num, 4))
-        for j, bbox_list in enumerate([x.split(' ')[:4] for x in lines[i+2:i+gt_box_num+2]]):
-            gt_pos[j] = [float(x) for x in bbox_list]
-            gt_pos[j, 2] = gt_pos[j, 0] + gt_pos[j, 2] - 1
-            gt_pos[j, 3] = gt_pos[j, 1] + gt_pos[j, 3] - 1
-        gt_data[lines[i]] = gt_pos
-        i += gt_box_num + 2
-        if i >= len(lines) - 1: #最后一行有一个换行
-            break
-    
-    return gt_data
-
 gt_data = load_wider_face_gt_boxes("E:/Document/Datasets/Wider Face/wider_face_split/wider_face_train_bbx_gt.txt")
+wh = get_imgs_w_h("w_h.csv")
+feature_maps = load_feature_maps(gt_data)
+# print(wh)
 k=8 #anchor number for each point
 ##################  RPN Model  #######################
-feature_map_tile = Input(shape=(None,None,512)) #1536
+feature_map_tile = Input(shape=(None,None,1536)) #1536
 convolution_3x3 = Conv2D(
-    filters=256, # 512
+    filters=512, # 512
     kernel_size=(3, 3),
     padding='same',
     name="3x3"
@@ -149,28 +122,22 @@ BG_FG_FRAC=2
 #load an example to void graph problem
 #TODO fix this.
 # 由于InceptionResNetV2下采40倍，VGG16下采样32倍
-pretrained_model = VGG16(include_top=False, weights='imagenet') # InceptionResNetV2(include_top=False) # VGG16(include_top=False) #
+pretrained_model = InceptionResNetV2(include_top=False) # VGG16(include_top=False) #
 img=load_img("E:/Share/ILSVRC2014_train_00010391.JPEG")
 x = img_to_array(img)
 x = np.expand_dims(x, axis=0)
 not_used=pretrained_model.predict(x)
 
-def produce_batch(filepath, gt_boxes):
-    # 首先加载图片
-    img=load_img(filepath)
-    # reshape
-    img_width=np.shape(img)[1]
-    img_height=np.shape(img)[0]
-    img=img.resize((int(img_width),int(img_height)))
-    #feed image to 预训练模型并得到feature map
-    img = img_to_array(img)
-    img = np.expand_dims(img, axis=0)
-    feature_map=pretrained_model.predict(img)
+def produce_batch(feature_map, gt_boxes, w_h):
+    # 首先加载feature_map
+    # feature_map=np.load(filepath)["fc"]
     # 获得feature map的长乘宽，即所有像素点数量
     height = np.shape(feature_map)[1]
     width = np.shape(feature_map)[2]
     num_feature_map=width*height
     # 用图片的长宽除以feature map的长宽，获得步长
+    img_width = w_h[0]
+    img_height = w_h[1]
     w_stride = img_width / width
     h_stride = img_height / height
     # print("w_stride, h_stride", w_stride, h_stride)
@@ -278,26 +245,18 @@ def filter_out_gt_boxes(gt_boxes, shreshold):
 # exit()
 ##################  generate data  #######################
 print("generate data")
-CelebA_dataset_path='E:/Document/Downloads/CelebA/Img/img_celeba'
-wider_face_dataset_path = "E:/Document/Datasets/Wider Face/WIDER_train/images"
 import os
 from multiprocessing import Process, Queue
 
 
-def worker(gt_data, q, batch_size=256):
+def worker(gt_data, q, wh, batch_size=256):
     batch_tiles=[]
     batch_labels=[]
     batch_bboxes=[]
-    # while 1:
-        # for jpg_index in range(20000):
-            # fname = os.path.join(CelebA_dataset_path, "{}.jpg".format(jpg_index+1).zfill(10))
-            # gt_boxes = np.expand_dims(gt_data[jpg_index, :], axis=0)
     for path, gt_boxes in gt_data.items():
-        # if not filter_out_gt_boxes(gt_boxes, 39):
-        #     continue
-        fname = os.path.join(wider_face_dataset_path, path)
-        tiles, labels, bboxes = produce_batch(fname, gt_boxes)
-        # print("produce batch done.", path, len(bboxes))
+        fname = os.path.join("feature_maps", path)[:-4]
+        w_h = wh[path]
+        tiles, labels, bboxes = produce_batch(fname, gt_boxes, w_h)
         if tiles is None or labels is None or bboxes is None:
             print("continue")
             continue
@@ -324,42 +283,81 @@ def worker(gt_data, q, batch_size=256):
                 batch_bboxes=[]
 
 
-q = Queue(20)
-count = 0
-sub_gt_data_1 = {}
-sub_gt_data_2 = {}
-sub_gt_data_3 = {}
-sub_gt_data_4 = {}
-for path, gt_boxes in gt_data.items():
-    if count < 3220:
-        sub_gt_data_1[path] = gt_boxes
-    elif count < 3220 * 2:
-        sub_gt_data_2[path] = gt_boxes
-    elif count < 3220 * 3:
-        sub_gt_data_3[path] = gt_boxes
-    elif count < 3220 * 4:
-        sub_gt_data_4[path] = gt_boxes
-    count += 1
+# q = Queue(20)
+# count = 0
+# sub_gt_data_1 = {}
+# sub_gt_data_2 = {}
+# sub_gt_data_3 = {}
+# sub_gt_data_4 = {}
+# for path, gt_boxes in gt_data.items():
+#     if count < 3220:
+#         sub_gt_data_1[path] = gt_boxes
+#     if count < 3220 * 2:
+#         sub_gt_data_2[path] = gt_boxes
+#     elif count < 3220 * 3:
+#         sub_gt_data_3[path] = gt_boxes
+#     elif count < 3220 * 4:
+#         sub_gt_data_4[path] = gt_boxes
+#     count += 1
 
-p1 = Process(target=worker, args=(sub_gt_data_1,q))
-p1.start()
-p2 = Process(target=worker, args=(sub_gt_data_2,q))
-p2.start()
-p3 = Process(target=worker, args=(sub_gt_data_3,q))
-p3.start()
-p4 = Process(target=worker, args=(sub_gt_data_4,q))
-p4.start()
+# p1 = Process(target=worker, args=(sub_gt_data_1, q, wh))
+# p1.start()
+# p2 = Process(target=worker, args=(sub_gt_data_2, q, wh))
+# p2.start()
+# p3 = Process(target=worker, args=(sub_gt_data_3, q, wh))
+# p3.start()
+# p4 = Process(target=worker, args=(sub_gt_data_4, q, wh))
+# p4.start()
 
-#################  start training  #######################
-def input_generator():
-    count=0
-    while 1:
-        batch = q.get()
-        yield batch[0], [batch[1], batch[2]]
+################  start training  #######################
+# def input_generator():
+#     count=0
+#     while 1:
+#         batch = q.get()
+#         yield batch[0], [batch[1], batch[2]]
+
+
+
+
+def input_generator(gt_data, wh, batch_size=256):
+    batch_tiles=[]
+    batch_labels=[]
+    batch_bboxes=[]
+    for path, gt_boxes in gt_data.items():
+        fname = os.path.join("feature_maps", path)[:-4]
+        w_h = wh[path]
+        tiles, labels, bboxes = produce_batch(feature_maps[fname], gt_boxes, w_h)
+        if tiles is None or labels is None or bboxes is None:
+            print("continue")
+            continue
+        for i in range(len(tiles)):
+            batch_tiles.append(tiles[i])
+            batch_labels.append(labels[i])
+            batch_bboxes.append(bboxes[i])
+            if(len(batch_tiles)==batch_size):
+                a=np.asarray(batch_tiles)
+                b=np.asarray(batch_labels)
+                c=np.asarray(batch_bboxes)
+                if not a.any() or not b.any() or not c.any(): #if a或b或c中所有的的值都是0
+                    print("empty array found.") # 当gt_box比较小的时候就会这样
+                    if not a.any():
+                        print("It is because a.any() is False")
+                    if not b.any():
+                        print("It is because b.any() is False")
+                    if not c.any():
+                        print("It is because c.any() is False", c)
+                    
+                yield a, [b, c]
+                batch_tiles=[]
+                batch_labels=[]
+                batch_bboxes=[]
+
+
+
 
 from keras.callbacks import ModelCheckpoint
 checkpointer = ModelCheckpoint(filepath='model/RPN_multiprocessing.hdf5', verbose=1, save_best_only=True)
-history = model.fit_generator(input_generator(), steps_per_epoch=1000, epochs=100, callbacks=[checkpointer])
+history = model.fit_generator(input_generator(gt_data, wh), steps_per_epoch=3000, epochs=100, callbacks=[checkpointer])
 
 # 观察训练结果
 import matplotlib.pyplot as plt
